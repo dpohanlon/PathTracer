@@ -65,28 +65,6 @@ public:
         return true;
     }
 
-    // bool intersect(Ray & r) const
-    // {
-    //     Vector3<T> l = center - r.origin;
-
-    //     T tca = Utilities::dot(l, r.direction);
-
-    //     if (tca < 0) return false;
-
-    //     T d2 = Utilities::dot(l, l) - tca * tca;
-
-    //     if (d2 > radius2) return false;
-
-    //     T thc = sqrt(radius2 - d2);
-
-    //     // r.minT = tca - thc;
-    //     // r.maxT = tca + thc;
-
-    //     r.t = tca - thc;
-
-    //     return true;
-    // }
-
     bool intersect(Ray & r) const
     {
 
@@ -110,6 +88,14 @@ public:
         r.t = t0;
 
         return true;
+    }
+
+    Vector3<float> hitNormal(Vector3<float> & pHit)
+    {
+        Vector3<float> norm = pHit - this->center;
+        norm.normalize();
+
+        return norm;
     }
 
     bool is(const Sphere<T> & s) const

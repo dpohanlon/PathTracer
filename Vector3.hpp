@@ -46,7 +46,7 @@ public:
 
     T dot(const Vector3<T> & v) const { return Vector3<T>(x * v.x + y * v.y +  z * v.z); }
 
-    // bool hasNaN(void) const { return std::isnan(x) || std::isnan(y) || std::isnan(z); }
+    bool hasNaN(void) const { return std::isnan(x) || std::isnan(y) || std::isnan(z); }
 
     // Vector3<T> operator * (const T & c) const { return Vector3<T>(x * c, y * c, z * c); }
     // Vector3<T> operator * (const Vector3<T> & v) const { return Vector3<T>(x * v.x, y * v.y, z * v.z); }
@@ -74,7 +74,7 @@ public:
 
     bool operator!= (const Vector3<T> v2) const { return !(*this == v2); }
 
-    Vector3<T> & operator /= (const float s)
+    Vector3<T> operator /= (const float s)
     {
         assert(s != 0);
 

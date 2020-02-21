@@ -22,6 +22,18 @@ const int kMaxRayDepth = 10;
 
 typedef Vector3<float> Vec3f;
 
+struct Intersection
+{
+    Sphere<float> * hitObject = nullptr;
+    float tNear;
+};
+
+struct Scene
+{
+    std::vector<Sphere<float> *> objects;
+    std::vector<Sphere<float> *> lights;
+};
+
 std::default_random_engine rng;
 std::uniform_real_distribution<float> uniform(0, 1);
 
@@ -32,14 +44,9 @@ float fresnelMix(const float a, const float b, const float m)
     return b * m + a * (1 - m);
 }
 
-// Construct Scene -> Place Objects
-// Render -> For each pixel - construct primary ray - Trace
-// Trace -> Test for intersections (all?)
-// Shade -> Apply shader (color)
-
 void createSamplingCoords(const Vec3f & n, Vec3f & nx, Vec3f & nz)
 {
-    // Use surface normal n to create a right handed coordinate system spanned by
+    // Use surface hitNormal n to create a right handed coordinate system spanned by
     // Nx and Nz, where Nx is perpendicular to n
 
     if (std::fabs(n.x) > std::fabs(n.y)) {
@@ -53,7 +60,7 @@ void createSamplingCoords(const Vec3f & n, Vec3f & nx, Vec3f & nz)
 
 Vec3f sampleHemisphere(float r1, float r2)
 {
-    float sinTheta = std::sqrt(1. - r1 * r1);
+    float sinTheta = std::sqrt(1. - r1 * r1); // r1 = cosTheta
     float phi = 2 * M_PI * r2;
 
     float x = sinTheta * std::cos(phi);
@@ -67,28 +74,73 @@ Vec3f sampleHemisphere(void)
     return sampleHemisphere(uniform(rng), uniform(rng));
 }
 
-Vec3f cast(Vec3f & origin, Vec3f & direction, int depth)
+Intersection trace(Vec3f & origin, Vec3f & direction, Scene & scene)
+{
+    Intersection isect;
+
+    for (auto obj : scene.objects) {
+
+        float tNear = Constants::kInfinity;
+        float tFar = Constants::kInfinity;
+
+        if (obj->intersect(origin, direction, &tNear, &tFar) && tNear < isect.tNear) {
+            isect.hitObject = obj;
+            isect.tNear = tNear;
+        }
+    }
+
+    return isect;
+}
+
+Vec3f cast(Vec3f & origin, Vec3f & direction, Scene & scene, int depth)
 {
     if (depth > kMaxRayDepth) return 0;
 
-    Vec3f normal; // CHANGE ME
+    Intersection isect = trace(origin, direction, scene);
 
-    Vec3f nx, ny;
+    if (isect.hitObject != nullptr) {
 
-    createSamplingCoords(normal, nx, ny);
+        Vec3f hitPoint = origin + direction * isect.tNear;
+        Vec3f hitNormal = isect.hitObject->hitNormal(hitPoint);
 
-    Vec3f hSamp = sampleHemisphere();
+        for (auto light : scene.lights) {
+            Intersection isectShadow;
+            light.illuminate();
+        }
 
-    float sx = hSamp.x * nx.x + hSamp.y * normal.x + hSamp.z * ny.x;
-    float sy = hSamp.x * nx.y + hSamp.y * normal.y + hSamp.z * ny.y;
-    float sz = hSamp.x * nx.z + hSamp.y * normal.z + hSamp.z * ny.z;
+        Vec3f nx, ny;
 
-    Vec3f hSampWorld(sx, sy, sz);
+        createSamplingCoords(hitNormal, nx, ny);
+
+        int nSamples = 10;
+
+        Vec3f indirectLight;
+
+        for (int i = 0; i < nSamples; i++) {
+
+            Vec3f hSamp = sampleHemisphere();
+
+            float sx = hSamp.x * nx.x + hSamp.y * hitNormal.x + hSamp.z * ny.x;
+            float sy = hSamp.x * nx.y + hSamp.y * hitNormal.y + hSamp.z * ny.y;
+            float sz = hSamp.x * nx.z + hSamp.y * hitNormal.z + hSamp.z * ny.z;
+
+            Vec3f hSampWorld = Vec3f(sx, sy, sz);
+            Vec3f newOrigin = hitPoint + hSampWorld * Constants::kEpsilon;
+
+            float cosTheta = hSamp.y;
+
+            indirectLight += cosTheta * cast(newOrigin, hSampWorld, scene, depth + 1);
+
+        }
+
+        indirectLight /= nSamples;
+
+    }
 
     return 0;
 }
 
-// void render(Image & img, const vector<Sphere<double> > & obj, const vector<Sphere<double> > & lights)
+// void render(Image & img, Scene & scene)
 // {
 //
 //     double invWidth = 1. / img.width;
@@ -104,8 +156,8 @@ Vec3f cast(Vec3f & origin, Vec3f & direction, int depth)
 //
 //     random_device rd;
 //     mt19937 mt(rd());
-//     normal_distribution<double> nx(0, 1.0);
-//     normal_distribution<double> ny(0, 1.0);
+//     hitNormal_distribution<double> nx(0, 1.0);
+//     hitNormal_distribution<double> ny(0, 1.0);
 //
 //     std::mutex imgMutex;
 //
