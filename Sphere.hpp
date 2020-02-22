@@ -5,7 +5,6 @@
 
 #include "Vector3.hpp"
 #include "Utilities.hpp"
-#include "Ray.h"
 
 template <typename T>
 class Sphere

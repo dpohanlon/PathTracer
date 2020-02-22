@@ -9,9 +9,6 @@
 
 #include "Vector3.hpp"
 #include "Sphere.hpp"
-#include "Ray.h"
-#include "Vec.h"
-#include "Point.h"
 #include "Utilities.hpp"
 #include "Constants.hpp"
 #include "Image.h"
@@ -261,7 +258,7 @@ int main(int argc, char const *argv[])
     Scene scene;
 
     // scene.objects.push_back(new Sphere<float>(Vec3f(0, 1, 10), 0.1, Vec3f(0, 1, 0), 0.0, 0.75));
-    scene.objects.push_back(new Sphere<float>(Vec3f(0, 2.0, 4.), 1.0, Vec3f(0, 0, 1.0), 0.0, 1.0));
+    scene.objects.push_back(new Sphere<float>(Vec3f(0, 1.0, 4.), 1.0, Vec3f(0, 0, 1.0), 0.0, 1.0));
     scene.objects.push_back(new Sphere<float>(Vec3f(0, -10003, 30), 10000, Vec3f(1), 0.0, 1.0));
 
     scene.lights.push_back(new Sphere<float>(Vec3f(0, 0, -10), 10, Vec3f(1), 0.0, 0.0, Vec3f(1.0)));
