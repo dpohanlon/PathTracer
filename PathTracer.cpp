@@ -18,14 +18,14 @@
 
 using namespace std;
 
-const int kMaxRayDepth = 10;
+const int kMaxRayDepth = 3;
 
 typedef Vector3<float> Vec3f;
 
 struct Intersection
 {
     Sphere<float> * hitObject = nullptr;
-    float tNear;
+    float tNear = Constants::kInfinity;
 };
 
 struct Scene
@@ -83,7 +83,23 @@ Intersection trace(Vec3f & origin, Vec3f & direction, Scene & scene)
         float tNear = Constants::kInfinity;
         float tFar = Constants::kInfinity;
 
-        if (obj->intersect(origin, direction, &tNear, &tFar) && tNear < isect.tNear) {
+        // if (obj->intersect(origin, direction, &tNear, &tFar))
+        // {
+        //     std::cout << tNear << " " << isect.tNear << std::endl;
+        // }
+
+        bool isIntersected = obj->intersect(origin, direction, tNear, tFar);
+
+        if (tNear > tFar) std::swap(tNear, tFar);
+
+        if (tNear < 0) {
+            tNear = tFar;
+            if (tNear < 0) {
+                isIntersected = false;
+            }
+        }
+
+        if (isIntersected && tNear < isect.tNear) {
             isect.hitObject = obj;
             isect.tNear = tNear;
         }
@@ -96,120 +112,162 @@ Vec3f cast(Vec3f & origin, Vec3f & direction, Scene & scene, int depth)
 {
     if (depth > kMaxRayDepth) return 0;
 
+    Vec3f hitColour;
+
     Intersection isect = trace(origin, direction, scene);
 
     if (isect.hitObject != nullptr) {
 
+        // std::cout << isect.hitObject << std::endl;
+
         Vec3f hitPoint = origin + direction * isect.tNear;
         Vec3f hitNormal = isect.hitObject->hitNormal(hitPoint);
 
+        Vec3f directLight;
+
         for (auto light : scene.lights) {
+
             Intersection isectShadow;
-            light.illuminate();
+            Vec3f lightDirection;
+            Vec3f lightIntensity;
+            float distance;
+
+            light->illuminate(hitPoint, lightDirection, lightIntensity, isectShadow.tNear);
+
+            Vec3f shadOrigin = hitPoint + hitNormal + Constants::kEpsilon;
+            Vec3f shadDirection = -lightDirection;
+
+            Intersection block = trace(shadOrigin, shadDirection, scene);
+            bool visible = block.hitObject == nullptr || block.tNear > isectShadow.tNear;
+
+            directLight += visible * lightIntensity * std::max(float(0.), Utilities::dot(hitNormal, -lightDirection));
         }
 
-        Vec3f nx, ny;
+        directLight /= float(M_PI);
 
-        createSamplingCoords(hitNormal, nx, ny);
-
-        int nSamples = 10;
+        // Vec3f nx, ny;
+        //
+        // createSamplingCoords(hitNormal, nx, ny);
+        //
+        // int nSamples = 1000;
 
         Vec3f indirectLight;
 
-        for (int i = 0; i < nSamples; i++) {
+        // for (int i = 0; i < nSamples; i++) {
+        //
+        //     Vec3f hSamp = sampleHemisphere();
+        //
+        //     float sx = hSamp.x * nx.x + hSamp.y * hitNormal.x + hSamp.z * ny.x;
+        //     float sy = hSamp.x * nx.y + hSamp.y * hitNormal.y + hSamp.z * ny.y;
+        //     float sz = hSamp.x * nx.z + hSamp.y * hitNormal.z + hSamp.z * ny.z;
+        //
+        //     Vec3f hSampWorld = Vec3f(sx, sy, sz);
+        //     Vec3f newOrigin = hitPoint + hSampWorld * Constants::kEpsilon;
+        //
+        //     float cosTheta = hSamp.y;
+        //
+        //     indirectLight += cosTheta * cast(newOrigin, hSampWorld, scene, depth + 1);
+        //
+        // }
+        //
+        // indirectLight /= nSamples;
 
-            Vec3f hSamp = sampleHemisphere();
-
-            float sx = hSamp.x * nx.x + hSamp.y * hitNormal.x + hSamp.z * ny.x;
-            float sy = hSamp.x * nx.y + hSamp.y * hitNormal.y + hSamp.z * ny.y;
-            float sz = hSamp.x * nx.z + hSamp.y * hitNormal.z + hSamp.z * ny.z;
-
-            Vec3f hSampWorld = Vec3f(sx, sy, sz);
-            Vec3f newOrigin = hitPoint + hSampWorld * Constants::kEpsilon;
-
-            float cosTheta = hSamp.y;
-
-            indirectLight += cosTheta * cast(newOrigin, hSampWorld, scene, depth + 1);
-
-        }
-
-        indirectLight /= nSamples;
+        hitColour = (directLight + 2. * indirectLight) * isect.hitObject->surfaceColor;
 
     }
 
-    return 0;
+    return hitColour;
 }
 
-// void render(Image & img, Scene & scene)
-// {
-//
-//     double invWidth = 1. / img.width;
-//     double invHeight = 1. / img.height;
-//
-//     double fov = 30;
-//
-//     double aspectRatio = img.width / img.height;
-//
-//     double angle = tan(M_PI * 0.5 * fov / 180.);
-//
-//     int samples = 256;
-//
-//     random_device rd;
-//     mt19937 mt(rd());
-//     hitNormal_distribution<double> nx(0, 1.0);
-//     hitNormal_distribution<double> ny(0, 1.0);
-//
-//     std::mutex imgMutex;
-//
-//     #pragma omp parallel for
-//     for (int y = 0; y < img.height; ++y) {
-//         for (int x = 0; x < img.width; ++x) {
-//
-//             Vector3<int> total(0);
-//
-//             for (int s = 0; s < samples; s++) {
-//                 double rayX = (2. * ((x + nx(mt) + 0.5) * invWidth) - 1.) * angle * aspectRatio;
-//                 double rayY = (1. - 2. * ((y + ny(mt) + 0.5) * invHeight)) * angle;
-//
-//                 Vec rayDir = Vec(rayX, rayY, 1); // -> camera faces z direction
-//
-//                 Ray ray = Ray(Point(0.), rayDir);
-//                 Vector3<double> pixelColor = trace(ray, obj, lights, 0);
-//
-//                 total += Vector3<int>(min(255, int(pixelColor.x * 255)),
-//                                       min(255, int(pixelColor.y * 255)),
-//                                       min(255, int(pixelColor.z * 255)));
-//             }
-//
-//             total.x = total.x / samples;
-//             total.y = total.y / samples;
-//             total.z = total.z / samples;
-//
-//             imgMutex.lock();
-//             img.pixels[y][x] = total;
-//             imgMutex.unlock();
-//         }
-//     }
-// }
+void render(Image & img, Scene & scene)
+{
+
+    double invWidth = 1. / img.width;
+    double invHeight = 1. / img.height;
+
+    double fov = 90;
+
+    double aspectRatio = img.width / img.height;
+
+    double angle = tan(M_PI * 0.5 * fov / 180.);
+
+    std::mutex imgMutex;
+
+    // random_device rd;
+    // mt19937 mt(rd());
+    // normal_distribution<double> nx(0, 1.0);
+    // normal_distribution<double> ny(0, 1.0);
+
+    #pragma omp parallel for
+    for (int y = 0; y < img.height; ++y) {
+        std::cout << y << std::endl;
+        for (int x = 0; x < img.width; ++x) {
+
+            Vector3<int> total(0);
+
+            double rayX = (2. * ((x + 0.5) * invWidth) - 1.) * angle * aspectRatio;
+            double rayY = (1. - 2. * ((y + 0.5) * invHeight)) * angle;
+
+            Vec3f rayDirection = Vec3f(rayX, rayY, 1); // -> camera faces z direction
+            Vec3f rayOrigin = 0;
+
+            Vec3f pixelColor = cast(rayOrigin, rayDirection, scene, 0);
+
+            total += Vector3<int>(min(255, int(pixelColor.x * 255)),
+                                  min(255, int(pixelColor.y * 255)),
+                                  min(255, int(pixelColor.z * 255)));
+
+            imgMutex.lock();
+            img.pixels[y][x] = total;
+            imgMutex.unlock();
+
+            // Vector3<int> total(0);
+            //
+            // int samples = 100;
+            //
+            // for (int s = 0; s < samples; s++) {
+            //     double rayX = (2. * ((x + nx(mt) + 0.5) * invWidth) - 1.) * angle * aspectRatio;
+            //     double rayY = (1. - 2. * ((y + ny(mt) + 0.5) * invHeight)) * angle;
+            //
+            //     Vec3f rayDirection = Vec3f(rayX, rayY, 1); // -> camera faces z direction
+            //     Vec3f rayOrigin = 0;
+            //
+            //     Vec3f pixelColor = cast(rayOrigin, rayDirection, scene, 0);
+            //
+            //     total += Vector3<int>(min(255, int(pixelColor.x * 255)),
+            //                           min(255, int(pixelColor.y * 255)),
+            //                           min(255, int(pixelColor.z * 255)));
+            // }
+            //
+            // total.x = total.x / samples;
+            // total.y = total.y / samples;
+            // total.z = total.z / samples;
+            //
+            // imgMutex.lock();
+            // img.pixels[y][x] = total;
+            // imgMutex.unlock();
+
+        }
+    }
+}
 
 int main(int argc, char const *argv[])
 {
-
     omp_set_num_threads(4);
 
     Image img(1024, 1024);
-    // Image img(640, 640);
+    // Image img(128, 128);
 
-    std::vector<Sphere<float> > objects;
-    std::vector<Sphere<float> > lights;
+    Scene scene;
 
-    objects.push_back(Sphere<float>(Vec3f(0, 1, 30), 3, Vec3f(0, 1, 0), 0.0, 0.75));
-    objects.push_back(Sphere<float>(Vec3f(5, 3, 30), 4, Vec3f(0, 0, 1), 0.0, 0.75));
-    objects.push_back(Sphere<float>(Vec3f(0, -10003, 30), 10000, Vec3f(1), 0.0, 0.8));
+    // scene.objects.push_back(new Sphere<float>(Vec3f(0, 1, 10), 0.1, Vec3f(0, 1, 0), 0.0, 0.75));
+    scene.objects.push_back(new Sphere<float>(Vec3f(0, 2.0, 4.), 1.0, Vec3f(0, 0, 1.0), 0.0, 1.0));
+    scene.objects.push_back(new Sphere<float>(Vec3f(0, -10003, 30), 10000, Vec3f(1), 0.0, 1.0));
 
-    objects.push_back(Sphere<float>(Vec3f(5, 12, -2), 10, Vec3f(1), 0.0, 0.0, Vec3f(0.15)));
+    scene.lights.push_back(new Sphere<float>(Vec3f(0, 0, -10), 10, Vec3f(1), 0.0, 0.0, Vec3f(1.0)));
+    // scene.objects.push_back(new Sphere<float>(Vec3f(5, 5, -150.), 5, Vec3f(0, 0, 1), 0.0, 0.75, Vec3f(1.0)));
 
-    // render(img, objects, lights);
+    render(img, scene);
 
     img.write("rt_out.ppm");
 
