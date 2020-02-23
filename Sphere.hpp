@@ -38,7 +38,10 @@ public:
             transparency(trs),
             reflection(rfl),
             emissive(!ec.isNull())
-    {}
+    {
+        surfaceColor.normalize();
+        // emissionColor.normalize();
+    }
 
     bool intersect(const Vector3<T> & rayOri,
                    const Vector3<T> & rayDir,

@@ -15,7 +15,7 @@
 
 using namespace std;
 
-const int kMaxRayDepth = 2;
+const int kMaxRayDepth = 3;
 
 typedef Vector3<float> Vec3f;
 
@@ -130,7 +130,17 @@ Vec3f cast(Vec3f & origin, Vec3f & direction, Scene & scene, int depth)
             Intersection block = trace(shadOrigin, shadDirection, scene);
             bool visible = block.hitObject == nullptr || block.tNear > isectLight.tNear;
 
-            directLight += visible * lightIntensity * std::max(float(0.), Utilities::dot(hitNormal, -lightDirection));
+            float lambert = std::max(float(0.), Utilities::dot(hitNormal, -lightDirection));
+            Vec3f phongDir = 2 * std::max(float(0.), Utilities::dot(-lightDirection, hitNormal)) * hitNormal - lightDirection;
+            phongDir.normalize();
+
+            float i_s = 0.8;
+            float k_s = 0.2;
+            float alpha = 10.;
+
+            float phong = pow(std::max(float(0.), Utilities::dot(phongDir, Vec3f(0, 0, -1))), alpha) * i_s * k_s;
+
+            directLight += visible * lightIntensity * (lambert + phong);
         }
 
         directLight /= float(M_PI);
@@ -140,9 +150,11 @@ Vec3f cast(Vec3f & origin, Vec3f & direction, Scene & scene, int depth)
 
         createSamplingCoords(hitNormal, nx, ny);
 
-        int nSamples = 100;
+        int nSamples = 10;
+        // int nSamples = 1000;
 
-        Vec3f indirectLight;
+        Vec3f indirectLight = 0;
+        Vec3f indirectLightLastItr = 0;
 
         for (int i = 0; i < nSamples; i++) {
 
@@ -158,13 +170,21 @@ Vec3f cast(Vec3f & origin, Vec3f & direction, Scene & scene, int depth)
 
             float cosTheta = hSamp.y;
 
-            indirectLight += cosTheta * pdfNorm * cast(newOrigin, hSampWorld, scene, depth + 1);
+            Vec3f light = cosTheta * pdfNorm * cast(newOrigin, hSampWorld, scene, depth + 1);
+
+            indirectLight += light;
+            indirectLightLastItr = light;
+
+            // if (i > 50 && (indirectLight - indirectLightLastItr).length() < 0.001){
+            //     // std::cout << "Truncating at " << i << std::endl;
+            //     break;
+            // }
 
         }
 
         indirectLight /= nSamples;
 
-        hitColour = (directLight + 2. * indirectLight) * isect.hitObject->surfaceColor;
+        hitColour = (directLight + 2. * indirectLight) * isect.hitObject->surfaceColor * isect.hitObject->reflection;
 
     }
 
@@ -221,16 +241,27 @@ int main(int argc, char const *argv[])
 
     Scene scene;
 
-    scene.objects.push_back(new Sphere<float>(Vec3f(-0.25, 0.0, 4), 0.30, Vec3f(1, 1, 1), 0.0, 1.0));
-    scene.objects.push_back(new Sphere<float>(Vec3f(-0.25, -0.5, 4), 0.10, Vec3f(0, 0, 1.0), 0.0, 1.0));
+    scene.objects.push_back(new Sphere<float>(Vec3f(-0.25, 0.0, 4), 0.40, Vec3f(1, 1, 1), 0.0, 1.0));
+    scene.objects.push_back(new Sphere<float>(Vec3f(0.2, -0.2, 3), 0.30, Vec3f(0, 0, 1.0), 0.0, 0.2));
     // scene.objects.push_back(new Sphere<float>(Vec3f(0, -10003, 30), 10000, Vec3f(1), 0.0, 0.65));
 
     // scene.lights.push_back(new Sphere<float>(Vec3f(-0.25, 0.5, 4), 0.1, Vec3f(1), 0.0, 0.0, 10.0 * Vec3f(0.5, 1.0, 0.5)));
-    scene.lights.push_back(new Sphere<float>(Vec3f(1.0, -0.5, 4), 0.1, Vec3f(1), 0.0, 0.0, 10. * Vec3f(1.0, 1.0, 1.0)));
+    scene.lights.push_back(new Sphere<float>(Vec3f(2, -2, -10), 0.1, Vec3f(1), 0.0, 0.0, 1E4 * Vec3f(1.0, 1.0, 1.0)));
+
+    // Bottom
+    scene.objects.push_back(new Sphere<float>(Vec3f(0, -1003, 0), 1000, Vec3f(1, 0, 0), 0.0, 1.0));
+    // Top
+    scene.objects.push_back(new Sphere<float>(Vec3f(0, 1003, 0), 1000, Vec3f(0, 0, 1), 0.0, 1.0));
+    // Back
+    scene.objects.push_back(new Sphere<float>(Vec3f(0, 0, 1015), 1000, Vec3f(0.0, 0.5, 0.5), 0.0, 1.0));
+    // Left
+    scene.objects.push_back(new Sphere<float>(Vec3f(-1003, 0, 0), 1000, Vec3f(0, 1, 0), 0.0, 1.0));
+    // Right
+    scene.objects.push_back(new Sphere<float>(Vec3f(1003, 0, 0), 1000, Vec3f(0, 1, 0), 0.0, 1.0));
 
     render(img, scene);
 
-    img.write("rt_out.ppm");
+    img.write("rt_out1.ppm");
 
     return 0;
 }
